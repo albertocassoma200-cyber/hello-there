@@ -39,7 +39,7 @@ const houses = (() => {
   for (let y = 75, row = 0; y < WORLD_H - 80; y += 128, row++) {
     for (let x = 75, col = 0; x < WORLD_W - 80; x += 145, col++) {
       const road = ROAD_X.some((v) => Math.abs(x - v) < 94) || ROAD_Y.some((v) => Math.abs(y - v) < 84);
-      const open = (x > 900 && x < 1510 && y > 20 && y < 380) || (x > 1020 && x < 1400 && y > 800 && y < 1080) || (x > 1500 && x < 1950 && y > 760 && y < 1060) || (x > 2020 && x < 2300 && y > 1420 && y < 1690);
+      const open = (x > 900 && x < 1510 && y > 20 && y < 380) || (x < 930 && y > 750 && y < 1145) || (x > 1020 && x < 1400 && y > 800 && y < 1080) || (x > 1500 && x < 1950 && y > 760 && y < 1060) || (x > 2020 && x < 2300 && y > 1420 && y < 1690);
       if (road || open || (row * 7 + col * 11) % 13 === 0) continue;
       const dense = x > 1510 || y > 1250;
       result.push({
@@ -61,6 +61,7 @@ const makeCars = (): Car[] => [
   { x: 1770, y: 1170, angle: Math.PI, color: "#357b9a", name: "Pick-up", occupied: false },
   { x: 2070, y: 1620, angle: 0, color: "#d6b33d", name: "Táxi", occupied: false },
   { x: 760, y: 1170, angle: -Math.PI / 2, color: "#5b8657", name: "Jipe", occupied: false },
+  { x: 510, y: 1170, angle: 0, color: "#77a95c", name: "Desportivo clássico", occupied: false },
 ];
 
 const makeWalkers = (): Walker[] => Array.from({ length: 28 }, (_, i) => ({
@@ -171,14 +172,29 @@ function Index() {
     };
     const drawCar = (car: Car) => {
       ctx.save(); ctx.translate(car.x, car.y); ctx.rotate(car.angle);
-      ctx.fillStyle = "rgba(0,0,0,.25)"; rr(-25, -13, 55, 31, 8); ctx.fill();
-      ctx.fillStyle = car.color; rr(-27, -15, 54, 30, 7); ctx.fill();
-      ctx.fillStyle = "#25333b"; rr(-13, -12, 25, 24, 5); ctx.fill();
-      ctx.fillStyle = "#9fc4ca"; ctx.fillRect(-9, -10, 17, 7); ctx.fillRect(-9, 3, 17, 7);
-      ctx.fillStyle = "#ffe3a5"; ctx.fillRect(22, -10, 4, 6); ctx.fillRect(22, 4, 4, 6);
-      ctx.fillStyle = "#22252a"; ctx.fillRect(-18, -17, 10, 4); ctx.fillRect(8, -17, 10, 4);
-      ctx.fillRect(-18, 13, 10, 4); ctx.fillRect(8, 13, 10, 4);
-      if (car.occupied) { ctx.strokeStyle = "#f8d34d"; ctx.lineWidth = 2; rr(-31, -19, 62, 38, 9); ctx.stroke(); }
+      const sports = car.name === "Desportivo clássico";
+      ctx.fillStyle = "rgba(0,0,0,.27)";
+      rr(sports ? -35 : -25, -14, sports ? 70 : 55, 31, 9); ctx.fill();
+      ctx.fillStyle = car.color;
+      rr(sports ? -36 : -27, sports ? -13 : -15, sports ? 72 : 54, sports ? 26 : 30, sports ? 12 : 7); ctx.fill();
+      if (sports) {
+        ctx.fillStyle = "#26383a"; rr(-18, -10, 36, 20, 9); ctx.fill();
+        ctx.fillStyle = "#9dc8c4"; rr(-13, -8, 26, 16, 7); ctx.fill();
+        ctx.fillStyle = "#d8e1d7"; ctx.fillRect(-31, -3, 5, 6); ctx.fillRect(26, -3, 5, 6);
+        ctx.fillStyle = "#22252a";
+        ctx.beginPath(); ctx.arc(-21, -13, 7, 0, Math.PI * 2); ctx.arc(21, -13, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-21, 13, 7, 0, Math.PI * 2); ctx.arc(21, 13, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#b9bfc0";
+        ctx.beginPath(); ctx.arc(-21, -13, 3, 0, Math.PI * 2); ctx.arc(21, -13, 3, 0, Math.PI * 2);
+        ctx.arc(-21, 13, 3, 0, Math.PI * 2); ctx.arc(21, 13, 3, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.fillStyle = "#25333b"; rr(-13, -12, 25, 24, 5); ctx.fill();
+        ctx.fillStyle = "#9fc4ca"; ctx.fillRect(-9, -10, 17, 7); ctx.fillRect(-9, 3, 17, 7);
+        ctx.fillStyle = "#ffe3a5"; ctx.fillRect(22, -10, 4, 6); ctx.fillRect(22, 4, 4, 6);
+        ctx.fillStyle = "#22252a"; ctx.fillRect(-18, -17, 10, 4); ctx.fillRect(8, -17, 10, 4);
+        ctx.fillRect(-18, 13, 10, 4); ctx.fillRect(8, 13, 10, 4);
+      }
+      if (car.occupied) { ctx.strokeStyle = "#f8d34d"; ctx.lineWidth = 2; rr(sports ? -40 : -31, -19, sports ? 80 : 62, 38, 9); ctx.stroke(); }
       ctx.restore();
     };
 
@@ -233,6 +249,85 @@ function Index() {
         ctx.strokeStyle = "rgba(245,225,160,.72)"; ctx.lineWidth = 2; ctx.setLineDash([22, 20]);
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD_W, y); ctx.stroke(); ctx.setLineDash([]);
       });
+      // Praia da Baía: golden sand, Atlantic water, palm-lined promenade.
+      ctx.fillStyle = "#d8c28e";
+      ctx.fillRect(0, 760, 930, 385);
+      const ocean = ctx.createLinearGradient(0, 800, 470, 1145);
+      ocean.addColorStop(0, "#65aebb");
+      ocean.addColorStop(.55, "#378b9b");
+      ocean.addColorStop(1, "#236b7d");
+      ctx.fillStyle = ocean;
+      ctx.beginPath();
+      ctx.moveTo(0, 805);
+      ctx.lineTo(420, 805);
+      ctx.bezierCurveTo(500, 870, 455, 965, 505, 1030);
+      ctx.bezierCurveTo(545, 1080, 480, 1110, 525, 1145);
+      ctx.lineTo(0, 1145);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(238,250,232,.8)";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(420, 805);
+      ctx.bezierCurveTo(500, 870, 455, 965, 505, 1030);
+      ctx.bezierCurveTo(545, 1080, 480, 1110, 525, 1145);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,.28)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 12; i++) {
+        const yy = 835 + i * 23;
+        ctx.beginPath(); ctx.moveTo(55 + (i % 3) * 28, yy); ctx.lineTo(250 + (i % 4) * 25, yy + 4); ctx.stroke();
+      }
+
+      // Beachfront high-rise apartments.
+      const coastBlocks = [
+        { x: 555, y: 780, w: 76, h: 148, c: "#83979b" },
+        { x: 650, y: 765, w: 96, h: 165, c: "#b8b8aa" },
+        { x: 765, y: 805, w: 84, h: 124, c: "#67818d" },
+      ];
+      coastBlocks.forEach((b) => {
+        ctx.fillStyle = "rgba(24,34,38,.22)"; rr(b.x + 7, b.y + 8, b.w, b.h, 4); ctx.fill();
+        ctx.fillStyle = b.c; rr(b.x, b.y, b.w, b.h, 4); ctx.fill();
+        for (let wy = b.y + 13; wy < b.y + b.h - 8; wy += 17) {
+          for (let wx = b.x + 9; wx < b.x + b.w - 8; wx += 14) {
+            ctx.fillStyle = "#c5e1df"; ctx.fillRect(wx, wy, 7, 10);
+          }
+        }
+        ctx.fillStyle = "#d3d1c4"; ctx.fillRect(b.x - 3, b.y + b.h - 3, b.w + 6, 7);
+      });
+
+      // Palms on the promenade; simple painted trunks and fronds.
+      [520, 610, 755, 865].forEach((x, i) => {
+        const y = 1010 + (i % 2) * 25;
+        ctx.strokeStyle = "#805b3e"; ctx.lineWidth = 7;
+        ctx.beginPath(); ctx.moveTo(x, y + 18); ctx.quadraticCurveTo(x + 8, y - 12, x + 1, y - 43); ctx.stroke();
+        ctx.strokeStyle = "#42764e"; ctx.lineWidth = 5;
+        for (let a = 0; a < 7; a++) {
+          const angle = -Math.PI + a * Math.PI / 6;
+          ctx.beginPath(); ctx.moveTo(x + 1, y - 43);
+          ctx.quadraticCurveTo(x + Math.cos(angle) * 26, y - 43 + Math.sin(angle) * 19,
+            x + Math.cos(angle) * 43, y - 43 + Math.sin(angle) * 30);
+          ctx.stroke();
+        }
+      });
+      ctx.fillStyle = "rgba(56,57,46,.54)";
+      ctx.font = "900 23px Arial";
+      ctx.fillText("PRAIA DA BAÍA", 70, 790);
+      ctx.font = "bold 10px Arial";
+      ctx.fillText("PASSEIO MARÍTIMO", 570, 1136);
+
+      // Beach couple standing near the parked classic sports car.
+      const drawBeachPerson = (x: number, y: number, shirt: string, shorts: string) => {
+        ctx.fillStyle = "rgba(0,0,0,.18)";
+        ctx.beginPath(); ctx.ellipse(x + 2, y + 15, 8, 4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#bd835f";
+        ctx.beginPath(); ctx.arc(x, y - 10, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = shirt; rr(x - 6, y - 4, 12, 15, 4); ctx.fill();
+        ctx.fillStyle = shorts; ctx.fillRect(x - 5, y + 9, 4, 9); ctx.fillRect(x + 1, y + 9, 4, 9);
+      };
+      drawBeachPerson(565, 1120, "#d6a0a0", "#e4d4bd");
+      drawBeachPerson(590, 1118, "#a6b8a0", "#d8d2c2");
+
       ctx.strokeStyle = "#b7a886"; ctx.lineWidth = 22; ctx.beginPath();
       ctx.moveTo(1530, 470); ctx.lineTo(1680, 540); ctx.lineTo(1790, 660); ctx.lineTo(1950, 690); ctx.lineTo(2190, 840);
       ctx.moveTo(1520, 1390); ctx.lineTo(1700, 1300); ctx.lineTo(1830, 1400); ctx.lineTo(2020, 1360); ctx.lineTo(2280, 1460); ctx.stroke();
@@ -384,7 +479,11 @@ function Index() {
       ctx.fillStyle = "rgba(14,20,22,.78)"; rr(mx - 5, my - 5, mw + 10, mh + 10, 12); ctx.fill();
       ctx.save(); ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip();
       ctx.fillStyle = "#a89b72"; ctx.fillRect(mx, my, mw, mh);
-      ctx.fillStyle = "#317889"; ctx.fillRect(mx + (950 / WORLD_W) * mw, my + (382 / WORLD_H) * mh, (520 / WORLD_W) * mw, (195 / WORLD_H) * mh);
+      ctx.fillStyle = "#317889";
+      ctx.fillRect(mx + (950 / WORLD_W) * mw, my + (382 / WORLD_H) * mh, (520 / WORLD_W) * mw, (195 / WORLD_H) * mh);
+      ctx.fillRect(mx, my + (805 / WORLD_H) * mh, (475 / WORLD_W) * mw, (340 / WORLD_H) * mh);
+      ctx.fillStyle = "#d8c28e";
+      ctx.fillRect(mx + (475 / WORLD_W) * mw, my + (805 / WORLD_H) * mh, (455 / WORLD_W) * mw, (340 / WORLD_H) * mh);
       ctx.fillStyle = "#50595a";
       ROAD_X.forEach((x) => ctx.fillRect(mx + (x / WORLD_W) * mw - 3, my, 6, mh));
       ROAD_Y.forEach((y) => ctx.fillRect(mx, my + (y / WORLD_H) * mh - 3, mw, 6));
@@ -413,7 +512,7 @@ function Index() {
           if (throttle) {
             const nx = clamp(car.x + Math.cos(car.angle) * throttle * 220 * dt, 35, WORLD_W - 35);
             const ny = clamp(car.y + Math.sin(car.angle) * throttle * 220 * dt, 35, WORLD_H - 35);
-            const water = nx > 950 && nx < 1470 && ny > 382 && ny < 577 && !(nx > 1152 && nx < 1258);
+            const water = (nx > 950 && nx < 1470 && ny > 382 && ny < 577 && !(nx > 1152 && nx < 1258)) || (nx < 455 && ny > 805 && ny < 1145);
             const obstacle = houses.some((h) => nx > h.x - 18 && nx < h.x + h.w + 18 && ny > h.y - 18 && ny < h.y + h.h + 18) ||
               skyline.some((b) => nx > b.x - 18 && nx < b.x + b.w + 18 && ny > b.y - 18 && ny < b.y + b.h + 18);
             if (!water && !obstacle) { car.x = nx; car.y = ny; }
@@ -427,7 +526,7 @@ function Index() {
             const speed = keys.has("shift") ? 205 : 142;
             const nx = clamp(g.player.x + dx * speed * dt, 25, WORLD_W - 25);
             const ny = clamp(g.player.y + dy * speed * dt, 25, WORLD_H - 25);
-            const water = nx > 950 && nx < 1470 && ny > 382 && ny < 577 && !(nx > 1152 && nx < 1258);
+            const water = (nx > 950 && nx < 1470 && ny > 382 && ny < 577 && !(nx > 1152 && nx < 1258)) || (nx < 455 && ny > 805 && ny < 1145);
             const blocked = water || houses.some((h) => nx > h.x - 12 && nx < h.x + h.w + 12 && ny > h.y - 12 && ny < h.y + h.h + 12) || skyline.some((b) => nx > b.x - 12 && nx < b.x + b.w + 12 && ny > b.y - 12 && ny < b.y + b.h + 12);
             if (!blocked) { g.player.x = nx; g.player.y = ny; }
             g.player.angle = Math.atan2(dy, dx);
