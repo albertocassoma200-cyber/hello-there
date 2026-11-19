@@ -81,11 +81,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Vida de Bairro — Mundo Aberto" },
+      { name: "description", content: "Explora uma cidade inspirada nos bairros de Luanda, conduz carros e completa missões." },
+      { name: "author", content: "Vida de Bairro" },
+      { property: "og:title", content: "Vida de Bairro — Mundo Aberto" },
+      { property: "og:description", content: "A cidade é tua. Explora, conduz e vive as tuas próprias aventuras." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
@@ -106,7 +106,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="pt-AO">
       <head>
         <HeadContent />
       </head>
