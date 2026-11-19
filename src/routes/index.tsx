@@ -31,7 +31,7 @@ const houses = (() => {
   for (let y = 75, row = 0; y < WORLD_H - 80; y += 128, row++) {
     for (let x = 75, col = 0; x < WORLD_W - 80; x += 145, col++) {
       const road = ROAD_X.some((v) => Math.abs(x - v) < 94) || ROAD_Y.some((v) => Math.abs(y - v) < 84);
-      const open = (x > 1020 && x < 1400 && y > 800 && y < 1080) || (x > 1500 && x < 1950 && y > 760 && y < 1060);
+      const open = (x > 1020 && x < 1400 && y > 800 && y < 1080) || (x > 1500 && x < 1950 && y > 760 && y < 1060) || (x > 2020 && x < 2300 && y > 1420 && y < 1690);
       if (road || open || (row * 7 + col * 11) % 13 === 0) continue;
       const dense = x > 1510 || y > 1250;
       result.push({
