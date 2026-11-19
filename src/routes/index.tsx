@@ -21,6 +21,14 @@ const WORLD_W = 2480;
 const WORLD_H = 1840;
 const ROAD_X = [360, 920, 1480, 2040];
 const ROAD_Y = [270, 720, 1170, 1620];
+const skyline = [
+  { x: 1000, y: 74, w: 94, h: 168, color: "#547b91", glass: "#b6dce5" },
+  { x: 1117, y: 46, w: 82, h: 194, color: "#a86d59", glass: "#f0c5a5" },
+  { x: 1222, y: 24, w: 108, h: 220, color: "#596d82", glass: "#b8d6dc" },
+  { x: 1350, y: 83, w: 94, h: 158, color: "#8b9294", glass: "#d7e3df" },
+  { x: 1050, y: 278, w: 118, h: 88, color: "#9b8773", glass: "#d9c8a9" },
+  { x: 1315, y: 275, w: 106, h: 94, color: "#73838a", glass: "#d0e0dd" },
+];
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 const distance = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
 
@@ -31,7 +39,7 @@ const houses = (() => {
   for (let y = 75, row = 0; y < WORLD_H - 80; y += 128, row++) {
     for (let x = 75, col = 0; x < WORLD_W - 80; x += 145, col++) {
       const road = ROAD_X.some((v) => Math.abs(x - v) < 94) || ROAD_Y.some((v) => Math.abs(y - v) < 84);
-      const open = (x > 1020 && x < 1400 && y > 800 && y < 1080) || (x > 1500 && x < 1950 && y > 760 && y < 1060) || (x > 2020 && x < 2300 && y > 1420 && y < 1690);
+      const open = (x > 900 && x < 1510 && y > 20 && y < 380) || (x > 1020 && x < 1400 && y > 800 && y < 1080) || (x > 1500 && x < 1950 && y > 760 && y < 1060) || (x > 2020 && x < 2300 && y > 1420 && y < 1690);
       if (road || open || (row * 7 + col * 11) % 13 === 0) continue;
       const dense = x > 1510 || y > 1250;
       result.push({
@@ -185,6 +193,28 @@ function Index() {
       ctx.fillStyle = "#b7a77a"; ctx.fillRect(0, 0, 930, WORLD_H);
       ctx.fillStyle = "#988966"; ctx.fillRect(1500, 0, 980, WORLD_H);
       ctx.fillStyle = "#81926b"; ctx.fillRect(990, 820, 410, 265);
+
+      // Waterfront: a modern downtown district with a broad river.
+      ctx.fillStyle = "#b9ad8c";
+      ctx.fillRect(930, 365, 560, 230);
+      const water = ctx.createLinearGradient(930, 365, 1490, 595);
+      water.addColorStop(0, "#4d91a0");
+      water.addColorStop(.48, "#317889");
+      water.addColorStop(1, "#245967");
+      ctx.fillStyle = water;
+      ctx.fillRect(950, 382, 520, 195);
+      ctx.strokeStyle = "rgba(218,245,238,.28)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 18; i++) {
+        const yy = 394 + i * 10;
+        ctx.beginPath();
+        ctx.moveTo(970 + (i % 4) * 22, yy);
+        ctx.lineTo(1130 + (i % 5) * 24, yy);
+        ctx.moveTo(1280 + (i % 3) * 18, yy + 4);
+        ctx.lineTo(1430, yy + 4);
+        ctx.stroke();
+      }
+
       for (let i = 0; i < 180; i++) {
         ctx.fillStyle = i % 2 ? "rgba(68,90,54,.10)" : "rgba(255,235,173,.10)";
         ctx.beginPath(); ctx.arc((i * 173) % WORLD_W, (i * 293) % WORLD_H, 4 + (i % 8), 0, Math.PI * 2); ctx.fill();
@@ -219,6 +249,73 @@ function Index() {
           ctx.fillStyle = "#554632"; ctx.font = "bold 8px Arial"; ctx.textAlign = "center"; ctx.fillText(h.shop, h.x + h.w / 2, h.y + 23);
         }
       });
+
+      // Glass towers and business district. Buildings are drawn as detailed city blocks.
+      skyline.forEach((b, i) => {
+        ctx.fillStyle = "rgba(20,31,37,.25)";
+        rr(b.x + 13, b.y + 14, b.w, b.h, 4); ctx.fill();
+        ctx.fillStyle = "#d1d4cb";
+        ctx.fillRect(b.x + 5, b.y + b.h - 5, b.w + 8, 8);
+        ctx.fillStyle = b.color;
+        rr(b.x, b.y, b.w, b.h, 4); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,.24)";
+        ctx.fillRect(b.x + 7, b.y + 7, b.w - 14, 5);
+        ctx.fillStyle = b.glass;
+        for (let wy = b.y + 18; wy < b.y + b.h - 12; wy += 17) {
+          for (let wx = b.x + 11; wx < b.x + b.w - 9; wx += 15) {
+            ctx.fillRect(wx, wy, 8, 9);
+          }
+        }
+        ctx.fillStyle = "rgba(24,39,48,.35)";
+        ctx.fillRect(b.x + b.w - 9, b.y + 8, 5, b.h - 16);
+        if (i === 2) {
+          ctx.fillStyle = "#d4a36b";
+          ctx.fillRect(b.x + b.w / 2 - 4, b.y - 12, 8, 12);
+        }
+      });
+
+      // Elevated bridge across the river, with approaches, guardrails and pylons.
+      ctx.fillStyle = "rgba(22,35,40,.3)";
+      ctx.fillRect(1150, 286, 126, 450);
+      ctx.fillStyle = "#c8c9c0";
+      ctx.fillRect(1142, 270, 126, 460);
+      ctx.fillStyle = "#414a4e";
+      ctx.fillRect(1154, 270, 102, 460);
+      ctx.fillStyle = "rgba(255,255,255,.32)";
+      ctx.fillRect(1158, 270, 3, 460);
+      ctx.fillRect(1249, 270, 3, 460);
+      ctx.strokeStyle = "#e7d7a6";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([20, 17]);
+      ctx.beginPath(); ctx.moveTo(1205, 278); ctx.lineTo(1205, 724); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#d8d5c9";
+      ctx.fillRect(1170, 410, 7, 12);
+      ctx.fillRect(1235, 410, 7, 12);
+      ctx.fillRect(1170, 548, 7, 12);
+      ctx.fillRect(1235, 548, 7, 12);
+      ctx.strokeStyle = "#e2e2d6";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(1168, 385); ctx.lineTo(1205, 292); ctx.lineTo(1240, 385);
+      ctx.moveTo(1168, 580); ctx.lineTo(1205, 690); ctx.lineTo(1240, 580);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(245,245,229,.7)";
+      ctx.lineWidth = 1;
+      for (let y = 310; y < 400; y += 18) {
+        ctx.beginPath(); ctx.moveTo(1170, y); ctx.lineTo(1205, 292); ctx.lineTo(1240, y); ctx.stroke();
+      }
+      for (let y = 575; y < 680; y += 18) {
+        ctx.beginPath(); ctx.moveTo(1170, y); ctx.lineTo(1205, 690); ctx.lineTo(1240, y); ctx.stroke();
+      }
+
+      ctx.font = "900 24px Arial";
+      ctx.fillStyle = "rgba(42,53,57,.56)";
+      ctx.fillText("CENTRO DA CIDADE", 990, 28);
+      ctx.font = "bold 10px Arial";
+      ctx.fillStyle = "rgba(255,255,255,.82)";
+      ctx.fillText("PONTE DA BAÍA", 1268, 495);
+      ctx.fillText("ZONA EMPRESARIAL", 1290, 255);
 
       // Market square and five-a-side football pitch.
       ctx.fillStyle = "#d9c99d"; rr(1010, 825, 355, 235, 16); ctx.fill();
@@ -322,7 +419,7 @@ function Index() {
             const speed = keys.has("shift") ? 205 : 142;
             const nx = clamp(g.player.x + dx * speed * dt, 25, WORLD_W - 25);
             const ny = clamp(g.player.y + dy * speed * dt, 25, WORLD_H - 25);
-            const blocked = houses.some((h) => nx > h.x - 12 && nx < h.x + h.w + 12 && ny > h.y - 12 && ny < h.y + h.h + 12);
+            const blocked = houses.some((h) => nx > h.x - 12 && nx < h.x + h.w + 12 && ny > h.y - 12 && ny < h.y + h.h + 12) || skyline.some((b) => nx > b.x - 12 && nx < b.x + b.w + 12 && ny > b.y - 12 && ny < b.y + b.h + 12);
             if (!blocked) { g.player.x = nx; g.player.y = ny; }
             g.player.angle = Math.atan2(dy, dx);
           }
