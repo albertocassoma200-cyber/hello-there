@@ -24,7 +24,7 @@ function Index() {
   const [paused,setPaused] = useState(false);
   const [night,setNight] = useState(false);
   const [message,setMessage] = useState("Bem-vindo a Luanda. Entra num carro ou explora a cidade!");
-  const [speed,setSpeed] = useState(0);
+  const [speed,setSpeed] = useState(0);\n  const pausedRef = useRef(false);\n  const missionRef = useRef(0);\n  useEffect(()=>{ pausedRef.current=paused; },[paused]);\n  useEffect(()=>{ missionRef.current=mission; const g=gameRef.current; if(g?.marker){g.marker.position.set(mission===0?0:58,0,mission===0?-34:48);g.marker.visible=mission<2;} },[mission]);
   const [full,setFull] = useState(false);
 
   const interact = useCallback(() => {
@@ -40,7 +40,7 @@ function Index() {
     const target = mission===0 ? new THREE.Vector3(0,0, -34) : new THREE.Vector3(58,0,48);
     if(g.player.position.distanceTo(target)<7){setMission((m)=>m===0?1:2);setMoney((m)=>m+5000);setMessage(mission===0?"Encomenda recolhida! Leva-a ao destino. +5.000 Kz":"Missão concluída! +5.000 Kz. Continua a explorar!");}
     else setMessage("Aproxima-te de um carro ou do marcador amarelo e prime E.");
-  },[mission]);
+  },[]);
 
   useEffect(()=>{
     const host=mountRef.current;if(!host)return;
@@ -99,7 +99,7 @@ function Index() {
     makeCar(8,4,0xb72f27);makeCar(-12,-12,0xd8d9d3);makeCar(34,18,0x276b8a);makeCar(-38,28,0xc6a13d);makeCar(17,-45,0x46724b);
     // Mission marker
     const marker=new THREE.Group();const ring=new THREE.Mesh(new THREE.TorusGeometry(2.1,.13,8,40),new THREE.MeshStandardMaterial({color:0xffd34e,emissive:0x9b6410}));ring.rotation.x=Math.PI/2;ring.position.y=.15;marker.add(ring);const beam=new THREE.Mesh(new THREE.CylinderGeometry(.05,.8,3,16,1,true),new THREE.MeshBasicMaterial({color:0xffcf48,transparent:true,opacity:.22,side:THREE.DoubleSide}));beam.position.y=1.5;marker.add(beam);marker.position.set(0,0,-34);scene.add(marker);
-    const keys=new Set<string>();let yaw=0,velocity=0,frame=0,last=0;
+    const keys=new Set<string>();let yaw=0,frame=0,lastSpeedUpdate=0;
     const resize=()=>{const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();};resize();const ro=new ResizeObserver(resize);ro.observe(host);
     const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(k))e.preventDefault();keys.add(k);if(k==="e")interact();if(k==="escape")setPaused(p=>!p);};const up=(e:KeyboardEvent)=>keys.delete(e.key.toLowerCase());
     window.addEventListener("keydown",down);window.addEventListener("keyup",up);
@@ -107,11 +107,11 @@ function Index() {
     renderer.domElement.addEventListener("pointerdown",pointerDown);window.addEventListener("pointermove",pointerMove);window.addEventListener("pointerup",pointerUp);
     gameRef.current={scene,camera,renderer,player,vehicles,vehicle:null,keys,marker};
     const clock=new THREE.Clock();
-    const animate=(t:number)=>{frame=requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(!paused){
+    const animate=(t:number)=>{frame=requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(!pausedRef.current){
       const forward=keys.has("w")||keys.has("arrowup"),back=keys.has("s")||keys.has("arrowdown"),left=keys.has("a")||keys.has("arrowleft"),right=keys.has("d")||keys.has("arrowright");
       const actor:THREE.Group=gActor();function gActor(){return gameRef.current?.vehicle?.root??player;}
-      if(gameRef.current?.vehicle){const v=gameRef.current.vehicle;const throttle=(forward?1:0)-(back?.7:0);v.speed=THREE.MathUtils.damp(v.speed,throttle*25,2.2,dt);if(left)actor.rotation.y+=2*dt*Math.sign(v.speed||1);if(right)actor.rotation.y-=2*dt*Math.sign(v.speed||1);actor.translateZ(-v.speed*dt);actor.position.x=clamp(actor.position.x,-195,195);actor.position.z=clamp(actor.position.z,-195,195);setSpeed(Math.round(Math.abs(v.speed)*4));}
-      else{const moving=forward||backwardCheck(back);if(left)yaw+=2.4*dt;if(right)yaw-=2.4*dt;player.rotation.y=yaw;const dir=(forward?1:0)-(back?1:0);if(moving){player.translateZ(-dir*(keys.has("shift")?10:6)*dt);}player.position.x=clamp(player.position.x,-195,195);player.position.z=clamp(player.position.z,-195,195);setSpeed(0);}
+      if(gameRef.current?.vehicle){const v=gameRef.current.vehicle;const throttle=(forward?1:0)-(back?.7:0);v.speed=THREE.MathUtils.damp(v.speed,throttle*25,2.2,dt);if(left)actor.rotation.y+=2*dt*Math.sign(v.speed||1);if(right)actor.rotation.y-=2*dt*Math.sign(v.speed||1);actor.translateZ(-v.speed*dt);actor.position.x=clamp(actor.position.x,-195,195);actor.position.z=clamp(actor.position.z,-195,195);if(t-lastSpeedUpdate>180){setSpeed(Math.round(Math.abs(v.speed)*4));lastSpeedUpdate=t;}}
+      else{const moving=forward||backwardCheck(back);if(left)yaw+=2.4*dt;if(right)yaw-=2.4*dt;player.rotation.y=yaw;const dir=(forward?1:0)-(back?1:0);if(moving){player.translateZ(-dir*(keys.has("shift")?10:6)*dt);}player.position.x=clamp(player.position.x,-195,195);player.position.z=clamp(player.position.z,-195,195);if(t-lastSpeedUpdate>180){setSpeed(0);lastSpeedUpdate=t;}}
       const follow=actor.position.clone().add(new THREE.Vector3(Math.sin(actor.rotation.y)*10,6.2,Math.cos(actor.rotation.y)*10));camera.position.lerp(follow,.095);camera.lookAt(actor.position.clone().add(new THREE.Vector3(0,1.5,0)));
       marker.rotation.y+=dt*.8;marker.position.y=.12+Math.sin(t*.002)*.12;
     }
@@ -119,7 +119,7 @@ function Index() {
     function backwardCheck(v:boolean){return v;}
     frame=requestAnimationFrame(animate);
     return()=>{cancelAnimationFrame(frame);ro.disconnect();window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);renderer.domElement.removeEventListener("pointerdown",pointerDown);window.removeEventListener("pointermove",pointerMove);window.removeEventListener("pointerup",pointerUp);renderer.dispose();if(host.contains(renderer.domElement))host.removeChild(renderer.domElement);scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const m=o.material;if(Array.isArray(m))m.forEach(x=>x.dispose());else m.dispose();}});gameRef.current=null;};
-  },[interact,paused]);
+  },[interact]);
 
   useEffect(()=>{const g=gameRef.current;if(!g)return;g.scene.background=new THREE.Color(night?0x111b32:0x9bb8c6);g.scene.fog.color.set(night?0x111b32:0x9bb8c6);},[night]);
   const press=(key:string,on:boolean)=>{const g=gameRef.current;if(!g)return;if(on)g.keys.add(key);else g.keys.delete(key);};
