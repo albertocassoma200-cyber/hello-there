@@ -1,636 +1,135 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import * as THREE from "three";
 
 export const Route = createFileRoute("/")({
   component: Index,
-  head: () => ({
-    meta: [
-      { title: "Vida de Bairro — Mundo Aberto" },
-      { name: "description", content: "Explora uma cidade inspirada nos bairros de Luanda, conduz carros e completa missões." },
-      { property: "og:title", content: "Vida de Bairro — Mundo Aberto" },
-      { property: "og:description", content: "A cidade é tua. Explora, conduz e vive as tuas próprias aventuras." },
-    ],
-  }),
+  head: () => ({ meta: [
+    { title: "GTA Angola — Vida Sem Limites" },
+    { name: "description", content: "Explora Luanda num mundo aberto 3D. Conduz, descobre a cidade e completa missões." },
+    { property: "og:title", content: "GTA Angola — Vida Sem Limites" },
+    { property: "og:description", content: "Uma aventura de mundo aberto inspirada em Luanda." },
+  ] }),
 });
 
-type Car = { x: number; y: number; angle: number; color: string; name: string; occupied: boolean };
-type Walker = { x: number; y: number; phase: number; color: string; speed: number };
-type MissionPhase = "pickup" | "deliver" | "done";
-
-const WORLD_W = 2480;
-const WORLD_H = 1840;
-const ROAD_X = [360, 920, 1480, 2040];
-const ROAD_Y = [270, 720, 1170, 1620];
-const skyline = [
-  { x: 1000, y: 74, w: 94, h: 168, color: "#547b91", glass: "#b6dce5" },
-  { x: 1117, y: 46, w: 82, h: 194, color: "#a86d59", glass: "#f0c5a5" },
-  { x: 1222, y: 24, w: 108, h: 220, color: "#596d82", glass: "#b8d6dc" },
-  { x: 1350, y: 83, w: 94, h: 158, color: "#8b9294", glass: "#d7e3df" },
-  { x: 1050, y: 278, w: 118, h: 88, color: "#9b8773", glass: "#d9c8a9" },
-  { x: 1315, y: 275, w: 106, h: 94, color: "#73838a", glass: "#d0e0dd" },
-];
-const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-const distance = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
-
-const houses = (() => {
-  const result: Array<{ x: number; y: number; w: number; h: number; color: string; roof: string; shop?: string }> = [];
-  const walls = ["#c78a62", "#d4b17c", "#a96f56", "#c6c0a0", "#b77d72", "#d1a66c", "#8f8d79", "#c9c6b6"];
-  const roofs = ["#9e5944", "#7c6e5b", "#b45f49", "#887b68", "#d0b28b"];
-  for (let y = 75, row = 0; y < WORLD_H - 80; y += 128, row++) {
-    for (let x = 75, col = 0; x < WORLD_W - 80; x += 145, col++) {
-      const road = ROAD_X.some((v) => Math.abs(x - v) < 94) || ROAD_Y.some((v) => Math.abs(y - v) < 84);
-      const open = (x > 900 && x < 1510 && y > 20 && y < 380) || (x < 930 && y > 750 && y < 1145) || (x > 1020 && x < 1400 && y > 800 && y < 1080) || (x > 1500 && x < 1950 && y > 760 && y < 1060) || (x > 2020 && x < 2300 && y > 1420 && y < 1690);
-      if (road || open || (row * 7 + col * 11) % 13 === 0) continue;
-      const dense = x > 1510 || y > 1250;
-      result.push({
-        x: x + ((row + col) % 2) * 12, y: y + ((row * 3 + col) % 2) * 9,
-        w: dense ? 104 + ((row + col) % 3) * 12 : 94 + ((row * 3 + col) % 4) * 11,
-        h: dense ? 80 + ((row * 5 + col) % 3) * 9 : 76 + ((row + col * 2) % 4) * 8,
-        color: walls[(row * 5 + col * 3) % walls.length],
-        roof: roofs[(row + col * 2) % roofs.length],
-        shop: (row * 3 + col) % 19 === 0 ? ["CANTINA", "BARBEARIA", "OFICINA", "MERCEARIA"][(row + col) % 4] : undefined,
-      });
-    }
-  }
-  return result;
-})();
-
-const makeCars = (): Car[] => [
-  { x: 505, y: 270, angle: 0, color: "#d84e36", name: "Toyota Corolla", occupied: false },
-  { x: 1090, y: 720, angle: Math.PI / 2, color: "#e7e3d8", name: "Hyundai i10", occupied: false },
-  { x: 1770, y: 1170, angle: Math.PI, color: "#357b9a", name: "Pick-up", occupied: false },
-  { x: 2070, y: 1620, angle: 0, color: "#d6b33d", name: "Táxi", occupied: false },
-  { x: 760, y: 1170, angle: -Math.PI / 2, color: "#5b8657", name: "Jipe", occupied: false },
-  { x: 510, y: 1170, angle: 0, color: "#77a95c", name: "Desportivo clássico", occupied: false },
-];
-
-const makeWalkers = (): Walker[] => Array.from({ length: 28 }, (_, i) => ({
-  x: 120 + ((i * 271) % 2220), y: 110 + ((i * 193) % 1600), phase: i * 1.7,
-  color: ["#e7ae79", "#8b563e", "#d6a16c", "#6f4539"][i % 4], speed: 8 + (i % 4) * 2,
-}));
+type Vehicle = { root: THREE.Group; speed: number; occupied: boolean; color: number };
+const clamp = (v:number,a:number,b:number) => Math.max(a,Math.min(b,v));
 
 function Index() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const gameRef = useRef({
-    player: { x: 1205, y: 320, angle: Math.PI / 2, money: 0 },
-    cars: makeCars(), walkers: makeWalkers(), keys: new Set<string>(), currentCar: -1,
-    mission: "pickup" as MissionPhase,
-    cash: [{ x: 720, y: 1170, value: 500 }, { x: 1860, y: 720, value: 750 }, { x: 2240, y: 1370, value: 500 }],
-    night: false, time: 0, lastHud: 0,
-    message: "Bem-vindo! Vai até ao mercado buscar a encomenda.", messageUntil: 5,
-  });
-  const [money, setMoney] = useState(0);
-  const [mission, setMission] = useState<MissionPhase>("pickup");
-  const [inCar, setInCar] = useState(false);
-  const [night, setNight] = useState(false);
-  const [paused, setPaused] = useState(false);
-  const [hint, setHint] = useState("WASD ou setas para andar");
-  const [message, setMessage] = useState("Bem-vindo! Vai até ao mercado buscar a encomenda.");
-  const [full, setFull] = useState(false);
-
-  const setKey = useCallback((key: string, pressed: boolean) => {
-    if (pressed) gameRef.current.keys.add(key);
-    else gameRef.current.keys.delete(key);
-  }, []);
+  const mountRef = useRef<HTMLDivElement>(null);
+  const gameRef = useRef<any>(null);
+  const [money,setMoney] = useState(2500);
+  const [mission,setMission] = useState(0);
+  const [inCar,setInCar] = useState(false);
+  const [paused,setPaused] = useState(false);
+  const [night,setNight] = useState(false);
+  const [message,setMessage] = useState("Bem-vindo a Luanda. Entra num carro ou explora a cidade!");
+  const [speed,setSpeed] = useState(0);
+  const [full,setFull] = useState(false);
 
   const interact = useCallback(() => {
-    const g = gameRef.current;
-    if (g.currentCar >= 0) {
-      const car = g.cars[g.currentCar];
-      car.occupied = false;
-      g.player.x = car.x + Math.cos(car.angle + Math.PI / 2) * 42;
-      g.player.y = car.y + Math.sin(car.angle + Math.PI / 2) * 42;
-      g.currentCar = -1;
-      setInCar(false);
-      g.message = "Saíste do veículo.";
-      g.messageUntil = g.time + 2.8;
-      return;
+    const g=gameRef.current; if(!g) return;
+    if(g.vehicle) {
+      g.vehicle.occupied=false; g.player.visible=true;
+      g.player.position.copy(g.vehicle.root.position).add(new THREE.Vector3(2,0,2));
+      g.vehicle=null; setInCar(false); setMessage("Saíste do veículo."); return;
     }
-    const nearbyCar = g.cars.findIndex((car) => distance(g.player.x, g.player.y, car.x, car.y) < 66);
-    if (nearbyCar >= 0) {
-      g.currentCar = nearbyCar;
-      g.cars[nearbyCar].occupied = true;
-      setInCar(true);
-      g.message = "Entraste no " + g.cars[nearbyCar].name + ". W/S acelera · A/D vira.";
-      g.messageUntil = g.time + 4;
-      return;
+    let nearest:Vehicle|null=null, best=5.2;
+    g.vehicles.forEach((v:Vehicle)=>{const d=v.root.position.distanceTo(g.player.position);if(d<best){best=d;nearest=v;}});
+    if(nearest){nearest.occupied=true;g.vehicle=nearest;g.player.visible=false;setInCar(true);setMessage("Veículo pronto. Usa W/A/S/D para conduzir.");return;}
+    const target = mission===0 ? new THREE.Vector3(0,0, -34) : new THREE.Vector3(58,0,48);
+    if(g.player.position.distanceTo(target)<7){setMission((m)=>m===0?1:2);setMoney((m)=>m+5000);setMessage(mission===0?"Encomenda recolhida! Leva-a ao destino. +5.000 Kz":"Missão concluída! +5.000 Kz. Continua a explorar!");}
+    else setMessage("Aproxima-te de um carro ou do marcador amarelo e prime E.");
+  },[mission]);
+
+  useEffect(()=>{
+    const host=mountRef.current;if(!host)return;
+    const scene=new THREE.Scene(); scene.background=new THREE.Color(0x9bb8c6); scene.fog=new THREE.Fog(0x9bb8c6,75,230);
+    const camera=new THREE.PerspectiveCamera(65,1,.1,500);
+    const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.12;
+    host.appendChild(renderer.domElement);
+    scene.add(new THREE.HemisphereLight(0xd9edff,0x66513b,2.0));
+    const sun=new THREE.DirectionalLight(0xffe0b1,3.1);sun.position.set(-55,90,45);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-100;sun.shadow.camera.right=100;sun.shadow.camera.top=100;sun.shadow.camera.bottom=-100;scene.add(sun);
+    const ground=new THREE.Mesh(new THREE.PlaneGeometry(420,420),new THREE.MeshStandardMaterial({color:0x9c9a78,roughness:1}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+    const roadMat=new THREE.MeshStandardMaterial({color:0x343b40,roughness:.94});
+    const lineMat=new THREE.MeshStandardMaterial({color:0xe7c978,emissive:0x5a4211});
+    for(let i=-3;i<=3;i++){
+      const x=i*28;const road=new THREE.Mesh(new THREE.BoxGeometry(9,.08,420),roadMat);road.position.set(x,.04,0);road.receiveShadow=true;scene.add(road);
+      for(let z=-205;z<210;z+=12){const dash=new THREE.Mesh(new THREE.BoxGeometry(.13,.1,5),lineMat);dash.position.set(x,.1,z);scene.add(dash);}
+      const cross=new THREE.Mesh(new THREE.BoxGeometry(420,.08,9),roadMat);cross.position.set(0,.05,i*28);cross.receiveShadow=true;scene.add(cross);
     }
-    if (g.mission === "pickup" && distance(g.player.x, g.player.y, 1255, 900) < 110) {
-      g.mission = "deliver";
-      setMission("deliver");
-      g.message = "Encomenda recolhida! Leva-a à Dona Zefa, no Novo Horizonte.";
-      g.messageUntil = g.time + 5;
-    } else if (g.mission === "deliver" && distance(g.player.x, g.player.y, 2140, 1540) < 120) {
-      g.mission = "done";
-      setMission("done");
-      g.player.money += 5000;
-      setMoney(g.player.money);
-      g.message = "Missão concluída! Recebeste 5.000 Kz. Boa, chefe!";
-      g.messageUntil = g.time + 5;
-    } else {
-      g.message = "Procura um carro ou o marcador amarelo da missão.";
-      g.messageUntil = g.time + 2.5;
+    const buildingMats=[0xc68d69,0xd5b98a,0x9eaaa8,0x788e9d,0xb9a18c,0x8c7868].map(c=>new THREE.MeshStandardMaterial({color:c,roughness:.88}));
+    const glass=new THREE.MeshStandardMaterial({color:0x6f9ba8,metalness:.28,roughness:.24});
+    for(let x=-180;x<=180;x+=14)for(let z=-180;z<=180;z+=14){
+      if(Math.abs(x%28)<7 || Math.abs(z%28)<7)continue;
+      if(Math.abs(x)<20&&Math.abs(z)<20)continue;
+      const h=5+((Math.abs(x*7+z*3)%17));const w=6+(Math.abs(x+z)%4);
+      const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,7),buildingMats[Math.abs(Math.floor(x+z))%buildingMats.length]);
+      b.position.set(x,h/2,z);b.castShadow=true;b.receiveShadow=true;scene.add(b);
+      const roof=new THREE.Mesh(new THREE.BoxGeometry(w+.2,.25,7.2),new THREE.MeshStandardMaterial({color:0x514b43}));roof.position.set(x,h+.12,z);scene.add(roof);
+      for(let yy=2;yy<h-1;yy+=2.5){const win=new THREE.Mesh(new THREE.BoxGeometry(.75,.95,.06),glass);win.position.set(x-w/2+.7,yy,z+3.54);scene.add(win);const win2=win.clone();win2.position.x=x+w/2-.7;scene.add(win2);}
     }
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    const element = document.getElementById("game-frame");
-    try {
-      if (!document.fullscreenElement && element) {
-        await element.requestFullscreen();
-        setFull(true);
-      } else if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        setFull(false);
-      }
-    } catch {
-      setMessage("O modo de ecrã inteiro não está disponível neste navegador.");
+    // Luanda waterfront and promenade
+    const sea=new THREE.Mesh(new THREE.PlaneGeometry(115,85),new THREE.MeshStandardMaterial({color:0x247e91,roughness:.3,metalness:.12}));sea.rotation.x=-Math.PI/2;sea.position.set(-118,.03,105);scene.add(sea);
+    const sand=new THREE.Mesh(new THREE.PlaneGeometry(130,20),new THREE.MeshStandardMaterial({color:0xd7bd82}));sand.rotation.x=-Math.PI/2;sand.position.set(-112,.06,61);scene.add(sand);
+    for(let i=0;i<13;i++){const palm=new THREE.Group();const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.22,.38,5,8),new THREE.MeshStandardMaterial({color:0x805535}));trunk.position.y=2.5;palm.add(trunk);for(let j=0;j<7;j++){const leaf=new THREE.Mesh(new THREE.ConeGeometry(.42,4,5),new THREE.MeshStandardMaterial({color:0x286b3d}));leaf.position.y=5;leaf.rotation.z=Math.PI/2;leaf.rotation.y=j*Math.PI*2/7;leaf.position.x=Math.cos(j*Math.PI*2/7)*1.5;leaf.position.z=Math.sin(j*Math.PI*2/7)*1.5;palm.add(leaf);}palm.position.set(-165+i*8,0,54);scene.add(palm);}
+    // Landmark tower
+    const tower=new THREE.Mesh(new THREE.BoxGeometry(13,48,13),glass);tower.position.set(4,24,-72);tower.castShadow=true;scene.add(tower);
+    const towerTop=new THREE.Mesh(new THREE.CylinderGeometry(1.4,2,8,12),new THREE.MeshStandardMaterial({color:0xd7b36a,metalness:.5}));towerTop.position.set(4,52,-72);scene.add(towerTop);
+    // Player character: stylized detailed third-person model
+    const player=new THREE.Group();
+    const skin=new THREE.MeshStandardMaterial({color:0x8b5538,roughness:.8}),shirt=new THREE.MeshStandardMaterial({color:0x263d52}),pants=new THREE.MeshStandardMaterial({color:0x24282d}),shoe=new THREE.MeshStandardMaterial({color:0x111519});
+    const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.48,.85,5,10),shirt);torso.position.y=1.65;torso.castShadow=true;player.add(torso);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(.34,18,14),skin);head.position.y=2.55;head.castShadow=true;player.add(head);
+    const hair=new THREE.Mesh(new THREE.SphereGeometry(.35,16,10,0,Math.PI*2,0,Math.PI/2),new THREE.MeshStandardMaterial({color:0x171514}));hair.position.y=2.68;player.add(hair);
+    for(const side of [-1,1]){const leg=new THREE.Mesh(new THREE.CapsuleGeometry(.19,.72,4,8),pants);leg.position.set(side*.23,.57,0);player.add(leg);const arm=new THREE.Mesh(new THREE.CapsuleGeometry(.14,.65,4,8),skin);arm.position.set(side*.57,1.72,0);arm.rotation.z=side*.12;player.add(arm);const foot=new THREE.Mesh(new THREE.BoxGeometry(.3,.16,.48),shoe);foot.position.set(side*.23,.12,.08);player.add(foot);}
+    player.position.set(0,0,0);scene.add(player);
+    const vehicles:Vehicle[]=[];
+    const makeCar=(x:number,z:number,color:number)=>{
+      const root=new THREE.Group();const paint=new THREE.MeshStandardMaterial({color,metalness:.55,roughness:.28});const body=new THREE.Mesh(new THREE.BoxGeometry(2.25,.72,4.2),paint);body.position.y=.78;body.castShadow=true;root.add(body);
+      const cabin=new THREE.Mesh(new THREE.BoxGeometry(1.72,.78,2.05),new THREE.MeshStandardMaterial({color:0x253943,metalness:.35,roughness:.2}));cabin.position.set(0,1.42,-.25);root.add(cabin);
+      const hood=new THREE.Mesh(new THREE.BoxGeometry(2.12,.18,1.05),paint);hood.position.set(0,1.02,1.48);root.add(hood);
+      const wheelMat=new THREE.MeshStandardMaterial({color:0x17191c,roughness:.92}),rim=new THREE.MeshStandardMaterial({color:0xaeb8bc,metalness:.8,roughness:.25});
+      for(const sx of [-1,1])for(const sz of [-1,1]){const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.43,.43,.22,16),wheelMat);wheel.rotation.z=Math.PI/2;wheel.position.set(sx*1.12,.43,sz*1.35);wheel.castShadow=true;root.add(wheel);const hub=new THREE.Mesh(new THREE.CylinderGeometry(.19,.19,.235,12),rim);hub.rotation.z=Math.PI/2;hub.position.copy(wheel.position);root.add(hub);}
+      const lampMat=new THREE.MeshStandardMaterial({color:0xffe9b2,emissive:0x6c5124});for(const sx of [-.72,.72]){const lamp=new THREE.Mesh(new THREE.BoxGeometry(.38,.2,.08),lampMat);lamp.position.set(sx,.88,2.12);root.add(lamp);}
+      root.position.set(x,0,z);scene.add(root);vehicles.push({root,speed:0,occupied:false,color});
+    };
+    makeCar(8,4,0xb72f27);makeCar(-12,-12,0xd8d9d3);makeCar(34,18,0x276b8a);makeCar(-38,28,0xc6a13d);makeCar(17,-45,0x46724b);
+    // Mission marker
+    const marker=new THREE.Group();const ring=new THREE.Mesh(new THREE.TorusGeometry(2.1,.13,8,40),new THREE.MeshStandardMaterial({color:0xffd34e,emissive:0x9b6410}));ring.rotation.x=Math.PI/2;ring.position.y=.15;marker.add(ring);const beam=new THREE.Mesh(new THREE.CylinderGeometry(.05,.8,3,16,1,true),new THREE.MeshBasicMaterial({color:0xffcf48,transparent:true,opacity:.22,side:THREE.DoubleSide}));beam.position.y=1.5;marker.add(beam);marker.position.set(0,0,-34);scene.add(marker);
+    const keys=new Set<string>();let yaw=0,velocity=0,frame=0,last=0;
+    const resize=()=>{const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();};resize();const ro=new ResizeObserver(resize);ro.observe(host);
+    const down=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(k))e.preventDefault();keys.add(k);if(k==="e")interact();if(k==="escape")setPaused(p=>!p);};const up=(e:KeyboardEvent)=>keys.delete(e.key.toLowerCase());
+    window.addEventListener("keydown",down);window.addEventListener("keyup",up);
+    let dragging=false,lastX=0;const pointerDown=(e:PointerEvent)=>{dragging=true;lastX=e.clientX;};const pointerMove=(e:PointerEvent)=>{if(dragging){yaw-=(e.clientX-lastX)*.004;lastX=e.clientX;}};const pointerUp=()=>dragging=false;
+    renderer.domElement.addEventListener("pointerdown",pointerDown);window.addEventListener("pointermove",pointerMove);window.addEventListener("pointerup",pointerUp);
+    gameRef.current={scene,camera,renderer,player,vehicles,vehicle:null,keys,marker};
+    const clock=new THREE.Clock();
+    const animate=(t:number)=>{frame=requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);if(!paused){
+      const forward=keys.has("w")||keys.has("arrowup"),back=keys.has("s")||keys.has("arrowdown"),left=keys.has("a")||keys.has("arrowleft"),right=keys.has("d")||keys.has("arrowright");
+      const actor:THREE.Group=gActor();function gActor(){return gameRef.current?.vehicle?.root??player;}
+      if(gameRef.current?.vehicle){const v=gameRef.current.vehicle;const throttle=(forward?1:0)-(back?.7:0);v.speed=THREE.MathUtils.damp(v.speed,throttle*25,2.2,dt);if(left)actor.rotation.y+=2*dt*Math.sign(v.speed||1);if(right)actor.rotation.y-=2*dt*Math.sign(v.speed||1);actor.translateZ(-v.speed*dt);actor.position.x=clamp(actor.position.x,-195,195);actor.position.z=clamp(actor.position.z,-195,195);setSpeed(Math.round(Math.abs(v.speed)*4));}
+      else{const moving=forward||backwardCheck(back);if(left)yaw+=2.4*dt;if(right)yaw-=2.4*dt;player.rotation.y=yaw;const dir=(forward?1:0)-(back?1:0);if(moving){player.translateZ(-dir*(keys.has("shift")?10:6)*dt);}player.position.x=clamp(player.position.x,-195,195);player.position.z=clamp(player.position.z,-195,195);setSpeed(0);}
+      const follow=actor.position.clone().add(new THREE.Vector3(Math.sin(actor.rotation.y)*10,6.2,Math.cos(actor.rotation.y)*10));camera.position.lerp(follow,.095);camera.lookAt(actor.position.clone().add(new THREE.Vector3(0,1.5,0)));
+      marker.rotation.y+=dt*.8;marker.position.y=.12+Math.sin(t*.002)*.12;
     }
-  }, []);
+    renderer.render(scene,camera);};
+    function backwardCheck(v:boolean){return v;}
+    frame=requestAnimationFrame(animate);
+    return()=>{cancelAnimationFrame(frame);ro.disconnect();window.removeEventListener("keydown",down);window.removeEventListener("keyup",up);renderer.domElement.removeEventListener("pointerdown",pointerDown);window.removeEventListener("pointermove",pointerMove);window.removeEventListener("pointerup",pointerUp);renderer.dispose();if(host.contains(renderer.domElement))host.removeChild(renderer.domElement);scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const m=o.material;if(Array.isArray(m))m.forEach(x=>x.dispose());else m.dispose();}});gameRef.current=null;};
+  },[interact,paused]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    let frame = 0, previous = 0, width = 0, height = 0, dpr = 1;
-    const resize = () => {
-      const rect = canvas.getBoundingClientRect();
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      width = Math.max(320, rect.width);
-      height = Math.max(320, rect.height);
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-
-    const rr = (x: number, y: number, w: number, h: number, r: number) => {
-      ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
-    };
-    const drawCar = (car: Car) => {
-      ctx.save(); ctx.translate(car.x, car.y); ctx.rotate(car.angle);
-      const sports = car.name === "Desportivo clássico";
-      ctx.fillStyle = "rgba(0,0,0,.27)";
-      rr(sports ? -35 : -25, -14, sports ? 70 : 55, 31, 9); ctx.fill();
-      ctx.fillStyle = car.color;
-      rr(sports ? -36 : -27, sports ? -13 : -15, sports ? 72 : 54, sports ? 26 : 30, sports ? 12 : 7); ctx.fill();
-      if (sports) {
-        ctx.fillStyle = "#26383a"; rr(-18, -10, 36, 20, 9); ctx.fill();
-        ctx.fillStyle = "#9dc8c4"; rr(-13, -8, 26, 16, 7); ctx.fill();
-        ctx.fillStyle = "#d8e1d7"; ctx.fillRect(-31, -3, 5, 6); ctx.fillRect(26, -3, 5, 6);
-        ctx.fillStyle = "#22252a";
-        ctx.beginPath(); ctx.arc(-21, -13, 7, 0, Math.PI * 2); ctx.arc(21, -13, 7, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(-21, 13, 7, 0, Math.PI * 2); ctx.arc(21, 13, 7, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#b9bfc0";
-        ctx.beginPath(); ctx.arc(-21, -13, 3, 0, Math.PI * 2); ctx.arc(21, -13, 3, 0, Math.PI * 2);
-        ctx.arc(-21, 13, 3, 0, Math.PI * 2); ctx.arc(21, 13, 3, 0, Math.PI * 2); ctx.fill();
-      } else {
-        ctx.fillStyle = "#25333b"; rr(-13, -12, 25, 24, 5); ctx.fill();
-        ctx.fillStyle = "#9fc4ca"; ctx.fillRect(-9, -10, 17, 7); ctx.fillRect(-9, 3, 17, 7);
-        ctx.fillStyle = "#ffe3a5"; ctx.fillRect(22, -10, 4, 6); ctx.fillRect(22, 4, 4, 6);
-        ctx.fillStyle = "#22252a"; ctx.fillRect(-18, -17, 10, 4); ctx.fillRect(8, -17, 10, 4);
-        ctx.fillRect(-18, 13, 10, 4); ctx.fillRect(8, 13, 10, 4);
-      }
-      if (car.occupied) { ctx.strokeStyle = "#f8d34d"; ctx.lineWidth = 2; rr(sports ? -40 : -31, -19, sports ? 80 : 62, 38, 9); ctx.stroke(); }
-      ctx.restore();
-    };
-
-    const drawWorld = () => {
-      const g = gameRef.current;
-      const subject = g.currentCar >= 0 ? g.cars[g.currentCar] : g.player;
-      const cx = clamp(subject.x - width / 2, 0, WORLD_W - width);
-      const cy = clamp(subject.y - height / 2, 0, WORLD_H - height);
-      ctx.clearRect(0, 0, width, height);
-      ctx.save(); ctx.translate(-cx, -cy);
-      ctx.fillStyle = "#a89b72"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-      ctx.fillStyle = "#b7a77a"; ctx.fillRect(0, 0, 930, WORLD_H);
-      ctx.fillStyle = "#988966"; ctx.fillRect(1500, 0, 980, WORLD_H);
-      ctx.fillStyle = "#81926b"; ctx.fillRect(990, 820, 410, 265);
-
-      // Waterfront: a modern downtown district with a broad river.
-      ctx.fillStyle = "#b9ad8c";
-      ctx.fillRect(930, 365, 560, 230);
-      const water = ctx.createLinearGradient(930, 365, 1490, 595);
-      water.addColorStop(0, "#4d91a0");
-      water.addColorStop(.48, "#317889");
-      water.addColorStop(1, "#245967");
-      ctx.fillStyle = water;
-      ctx.fillRect(950, 382, 520, 195);
-      ctx.strokeStyle = "rgba(218,245,238,.28)";
-      ctx.lineWidth = 2;
-      for (let i = 0; i < 18; i++) {
-        const yy = 394 + i * 10;
-        ctx.beginPath();
-        ctx.moveTo(970 + (i % 4) * 22, yy);
-        ctx.lineTo(1130 + (i % 5) * 24, yy);
-        ctx.moveTo(1280 + (i % 3) * 18, yy + 4);
-        ctx.lineTo(1430, yy + 4);
-        ctx.stroke();
-      }
-
-      for (let i = 0; i < 180; i++) {
-        ctx.fillStyle = i % 2 ? "rgba(68,90,54,.10)" : "rgba(255,235,173,.10)";
-        ctx.beginPath(); ctx.arc((i * 173) % WORLD_W, (i * 293) % WORLD_H, 4 + (i % 8), 0, Math.PI * 2); ctx.fill();
-      }
-      ROAD_X.forEach((x) => {
-        ctx.fillStyle = "#c9bda0"; ctx.fillRect(x - 61, 0, 122, WORLD_H);
-        ctx.fillStyle = "#42494a"; ctx.fillRect(x - 48, 0, 96, WORLD_H);
-        ctx.fillStyle = "rgba(255,255,255,.24)"; ctx.fillRect(x - 52, 0, 3, WORLD_H); ctx.fillRect(x + 49, 0, 3, WORLD_H);
-        ctx.strokeStyle = "rgba(245,225,160,.72)"; ctx.lineWidth = 2; ctx.setLineDash([22, 20]);
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD_H); ctx.stroke(); ctx.setLineDash([]);
-      });
-      ROAD_Y.forEach((y) => {
-        ctx.fillStyle = "#c9bda0"; ctx.fillRect(0, y - 60, WORLD_W, 120);
-        ctx.fillStyle = "#42494a"; ctx.fillRect(0, y - 47, WORLD_W, 94);
-        ctx.fillStyle = "rgba(255,255,255,.22)"; ctx.fillRect(0, y - 51, WORLD_W, 3); ctx.fillRect(0, y + 48, WORLD_W, 3);
-        ctx.strokeStyle = "rgba(245,225,160,.72)"; ctx.lineWidth = 2; ctx.setLineDash([22, 20]);
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD_W, y); ctx.stroke(); ctx.setLineDash([]);
-      });
-      // Praia da Baía: golden sand, Atlantic water, palm-lined promenade.
-      ctx.fillStyle = "#d8c28e";
-      ctx.fillRect(0, 760, 930, 385);
-      const ocean = ctx.createLinearGradient(0, 800, 470, 1145);
-      ocean.addColorStop(0, "#65aebb");
-      ocean.addColorStop(.55, "#378b9b");
-      ocean.addColorStop(1, "#236b7d");
-      ctx.fillStyle = ocean;
-      ctx.beginPath();
-      ctx.moveTo(0, 805);
-      ctx.lineTo(420, 805);
-      ctx.bezierCurveTo(500, 870, 455, 965, 505, 1030);
-      ctx.bezierCurveTo(545, 1080, 480, 1110, 525, 1145);
-      ctx.lineTo(0, 1145);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = "rgba(238,250,232,.8)";
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(420, 805);
-      ctx.bezierCurveTo(500, 870, 455, 965, 505, 1030);
-      ctx.bezierCurveTo(545, 1080, 480, 1110, 525, 1145);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(255,255,255,.28)";
-      ctx.lineWidth = 2;
-      for (let i = 0; i < 12; i++) {
-        const yy = 835 + i * 23;
-        ctx.beginPath(); ctx.moveTo(55 + (i % 3) * 28, yy); ctx.lineTo(250 + (i % 4) * 25, yy + 4); ctx.stroke();
-      }
-
-      // Beachfront high-rise apartments.
-      const coastBlocks = [
-        { x: 555, y: 780, w: 76, h: 148, c: "#83979b" },
-        { x: 650, y: 765, w: 96, h: 165, c: "#b8b8aa" },
-        { x: 765, y: 805, w: 84, h: 124, c: "#67818d" },
-      ];
-      coastBlocks.forEach((b) => {
-        ctx.fillStyle = "rgba(24,34,38,.22)"; rr(b.x + 7, b.y + 8, b.w, b.h, 4); ctx.fill();
-        ctx.fillStyle = b.c; rr(b.x, b.y, b.w, b.h, 4); ctx.fill();
-        for (let wy = b.y + 13; wy < b.y + b.h - 8; wy += 17) {
-          for (let wx = b.x + 9; wx < b.x + b.w - 8; wx += 14) {
-            ctx.fillStyle = "#c5e1df"; ctx.fillRect(wx, wy, 7, 10);
-          }
-        }
-        ctx.fillStyle = "#d3d1c4"; ctx.fillRect(b.x - 3, b.y + b.h - 3, b.w + 6, 7);
-      });
-
-      // Palms on the promenade; simple painted trunks and fronds.
-      [520, 610, 755, 865].forEach((x, i) => {
-        const y = 1010 + (i % 2) * 25;
-        ctx.strokeStyle = "#805b3e"; ctx.lineWidth = 7;
-        ctx.beginPath(); ctx.moveTo(x, y + 18); ctx.quadraticCurveTo(x + 8, y - 12, x + 1, y - 43); ctx.stroke();
-        ctx.strokeStyle = "#42764e"; ctx.lineWidth = 5;
-        for (let a = 0; a < 7; a++) {
-          const angle = -Math.PI + a * Math.PI / 6;
-          ctx.beginPath(); ctx.moveTo(x + 1, y - 43);
-          ctx.quadraticCurveTo(x + Math.cos(angle) * 26, y - 43 + Math.sin(angle) * 19,
-            x + Math.cos(angle) * 43, y - 43 + Math.sin(angle) * 30);
-          ctx.stroke();
-        }
-      });
-      ctx.fillStyle = "rgba(56,57,46,.54)";
-      ctx.font = "900 23px Arial";
-      ctx.fillText("PRAIA DA BAÍA", 70, 790);
-      ctx.font = "bold 10px Arial";
-      ctx.fillText("PASSEIO MARÍTIMO", 570, 1136);
-
-      // Beach couple standing near the parked classic sports car.
-      const drawBeachPerson = (x: number, y: number, shirt: string, shorts: string) => {
-        ctx.fillStyle = "rgba(0,0,0,.18)";
-        ctx.beginPath(); ctx.ellipse(x + 2, y + 15, 8, 4, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#bd835f";
-        ctx.beginPath(); ctx.arc(x, y - 10, 6, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = shirt; rr(x - 6, y - 4, 12, 15, 4); ctx.fill();
-        ctx.fillStyle = shorts; ctx.fillRect(x - 5, y + 9, 4, 9); ctx.fillRect(x + 1, y + 9, 4, 9);
-      };
-      drawBeachPerson(565, 1120, "#d6a0a0", "#e4d4bd");
-      drawBeachPerson(590, 1118, "#a6b8a0", "#d8d2c2");
-
-      ctx.strokeStyle = "#b7a886"; ctx.lineWidth = 22; ctx.beginPath();
-      ctx.moveTo(1530, 470); ctx.lineTo(1680, 540); ctx.lineTo(1790, 660); ctx.lineTo(1950, 690); ctx.lineTo(2190, 840);
-      ctx.moveTo(1520, 1390); ctx.lineTo(1700, 1300); ctx.lineTo(1830, 1400); ctx.lineTo(2020, 1360); ctx.lineTo(2280, 1460); ctx.stroke();
-
-      houses.forEach((h, i) => {
-        ctx.fillStyle = "rgba(28,30,25,.22)"; rr(h.x + 7, h.y + 9, h.w, h.h, 4); ctx.fill();
-        ctx.fillStyle = h.color; rr(h.x, h.y, h.w, h.h, 4); ctx.fill();
-        ctx.fillStyle = h.roof; ctx.fillRect(h.x + 5, h.y + 5, h.w - 10, h.h - 10);
-        ctx.fillStyle = "rgba(255,255,255,.14)"; ctx.fillRect(h.x + 8, h.y + 8, h.w - 16, 5);
-        ctx.fillStyle = "#675c50"; ctx.fillRect(h.x + h.w * .42, h.y + h.h - 18, 15, 13);
-        if (i % 3 === 0) { ctx.fillStyle = "#d8c4a0"; ctx.fillRect(h.x + h.w * .68, h.y + 18, 16, 12); }
-        if (h.shop) {
-          ctx.fillStyle = "#f1d272"; rr(h.x + 8, h.y + 12, h.w - 16, 15, 3); ctx.fill();
-          ctx.fillStyle = "#554632"; ctx.font = "bold 8px Arial"; ctx.textAlign = "center"; ctx.fillText(h.shop, h.x + h.w / 2, h.y + 23);
-        }
-      });
-
-      // Glass towers and business district. Buildings are drawn as detailed city blocks.
-      skyline.forEach((b, i) => {
-        ctx.fillStyle = "rgba(20,31,37,.25)";
-        rr(b.x + 13, b.y + 14, b.w, b.h, 4); ctx.fill();
-        ctx.fillStyle = "#d1d4cb";
-        ctx.fillRect(b.x + 5, b.y + b.h - 5, b.w + 8, 8);
-        ctx.fillStyle = b.color;
-        rr(b.x, b.y, b.w, b.h, 4); ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,.24)";
-        ctx.fillRect(b.x + 7, b.y + 7, b.w - 14, 5);
-        ctx.fillStyle = b.glass;
-        for (let wy = b.y + 18; wy < b.y + b.h - 12; wy += 17) {
-          for (let wx = b.x + 11; wx < b.x + b.w - 9; wx += 15) {
-            ctx.fillRect(wx, wy, 8, 9);
-          }
-        }
-        ctx.fillStyle = "rgba(24,39,48,.35)";
-        ctx.fillRect(b.x + b.w - 9, b.y + 8, 5, b.h - 16);
-        if (i === 2) {
-          ctx.fillStyle = "#d4a36b";
-          ctx.fillRect(b.x + b.w / 2 - 4, b.y - 12, 8, 12);
-        }
-      });
-
-      // Elevated bridge across the river, with approaches, guardrails and pylons.
-      ctx.fillStyle = "rgba(22,35,40,.3)";
-      ctx.fillRect(1150, 286, 126, 450);
-      ctx.fillStyle = "#c8c9c0";
-      ctx.fillRect(1142, 270, 126, 460);
-      ctx.fillStyle = "#414a4e";
-      ctx.fillRect(1154, 270, 102, 460);
-      ctx.fillStyle = "rgba(255,255,255,.32)";
-      ctx.fillRect(1158, 270, 3, 460);
-      ctx.fillRect(1249, 270, 3, 460);
-      ctx.strokeStyle = "#e7d7a6";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([20, 17]);
-      ctx.beginPath(); ctx.moveTo(1205, 278); ctx.lineTo(1205, 724); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#d8d5c9";
-      ctx.fillRect(1170, 410, 7, 12);
-      ctx.fillRect(1235, 410, 7, 12);
-      ctx.fillRect(1170, 548, 7, 12);
-      ctx.fillRect(1235, 548, 7, 12);
-      ctx.strokeStyle = "#e2e2d6";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(1168, 385); ctx.lineTo(1205, 292); ctx.lineTo(1240, 385);
-      ctx.moveTo(1168, 580); ctx.lineTo(1205, 690); ctx.lineTo(1240, 580);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(245,245,229,.7)";
-      ctx.lineWidth = 1;
-      for (let y = 310; y < 400; y += 18) {
-        ctx.beginPath(); ctx.moveTo(1170, y); ctx.lineTo(1205, 292); ctx.lineTo(1240, y); ctx.stroke();
-      }
-      for (let y = 575; y < 680; y += 18) {
-        ctx.beginPath(); ctx.moveTo(1170, y); ctx.lineTo(1205, 690); ctx.lineTo(1240, y); ctx.stroke();
-      }
-
-      ctx.font = "900 24px Arial";
-      ctx.fillStyle = "rgba(42,53,57,.56)";
-      ctx.fillText("CENTRO DA CIDADE", 990, 28);
-      ctx.font = "bold 10px Arial";
-      ctx.fillStyle = "rgba(255,255,255,.82)";
-      ctx.fillText("PONTE DA BAÍA", 1268, 495);
-      ctx.fillText("ZONA EMPRESARIAL", 1290, 255);
-
-      // Market square and five-a-side football pitch.
-      ctx.fillStyle = "#d9c99d"; rr(1010, 825, 355, 235, 16); ctx.fill();
-      ctx.fillStyle = "#b58c58"; ctx.fillRect(1040, 850, 92, 70); ctx.fillStyle = "#df5a45"; ctx.fillRect(1040, 844, 92, 15);
-      ctx.fillStyle = "#42584a"; ctx.fillRect(1160, 850, 92, 70); ctx.fillStyle = "#e9c54d"; ctx.fillRect(1160, 844, 92, 15);
-      ctx.fillStyle = "#fff1c6"; ctx.font = "bold 13px Arial"; ctx.fillText("MERCADO DO BAIRRO", 1060, 950);
-      ctx.fillStyle = "#477d52"; rr(1530, 815, 380, 220, 12); ctx.fill();
-      ctx.strokeStyle = "rgba(245,255,222,.7)"; ctx.lineWidth = 3; ctx.strokeRect(1550, 835, 340, 180);
-      ctx.beginPath(); ctx.moveTo(1720, 835); ctx.lineTo(1720, 1015); ctx.arc(1720, 925, 34, -Math.PI / 2, Math.PI / 2); ctx.stroke();
-      ctx.strokeRect(1550, 885, 42, 80); ctx.strokeRect(1848, 885, 42, 80);
-      ctx.fillStyle = "#d8d0b2"; ctx.font = "bold 12px Arial"; ctx.fillText("CAMPO DO BAIRRO", 1630, 1060);
-
-      for (let i = 0; i < 35; i++) {
-        const x = 80 + ((i * 311) % 2290), y = 90 + ((i * 227) % 1640);
-        if (houses.some((h) => x > h.x - 25 && x < h.x + h.w + 25 && y > h.y - 25 && y < h.y + h.h + 25)) continue;
-        if (ROAD_X.some((r) => Math.abs(x - r) < 75) || ROAD_Y.some((r) => Math.abs(y - r) < 70)) continue;
-        ctx.fillStyle = "rgba(35,52,35,.22)"; ctx.beginPath(); ctx.arc(x + 4, y + 7, 17, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = i % 2 ? "#526f45" : "#66804b"; ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "rgba(220,232,165,.25)"; ctx.beginPath(); ctx.arc(x - 5, y - 6, 6, 0, Math.PI * 2); ctx.fill();
-      }
-
-      ctx.font = "900 27px Arial"; ctx.fillStyle = "rgba(50,43,32,.48)";
-      ctx.fillText("BAIRRO DA PEDREIRA", 80, 195); ctx.fillText("VILA DO SOL", 1050, 185); ctx.fillText("NOVO HORIZONTE", 1650, 1770);
-
-      if (g.mission !== "done") {
-        const target = g.mission === "pickup" ? { x: 1255, y: 900 } : { x: 2140, y: 1540 };
-        const pulse = 1 + Math.sin(g.time * 4) * .12;
-        ctx.save(); ctx.translate(target.x, target.y);
-        ctx.fillStyle = "rgba(255,207,57,.22)"; ctx.beginPath(); ctx.arc(0, 0, 44 * pulse, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#ffcf39"; ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#59451a"; ctx.font = "900 17px Arial"; ctx.textAlign = "center"; ctx.fillText(g.mission === "pickup" ? "!" : "★", 0, 6);
-        ctx.restore();
-      }
-      g.cash.forEach((coin) => {
-        ctx.fillStyle = "rgba(255,215,74,.2)"; ctx.beginPath(); ctx.arc(coin.x, coin.y, 24, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#f3c83d"; ctx.beginPath(); ctx.arc(coin.x, coin.y, 10, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#755619"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center"; ctx.fillText("K", coin.x, coin.y + 4);
-      });
-      g.walkers.forEach((walker) => {
-        ctx.save(); ctx.translate(walker.x, walker.y);
-        ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.beginPath(); ctx.ellipse(2, 8, 8, 4, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = walker.color; ctx.beginPath(); ctx.arc(0, -5, 6, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#29343a"; rr(-5, 0, 10, 13, 4); ctx.fill(); ctx.restore();
-      });
-      g.cars.forEach(drawCar);
-      if (g.currentCar < 0) {
-        ctx.save(); ctx.translate(g.player.x, g.player.y); ctx.rotate(g.player.angle);
-        ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.ellipse(2, 7, 13, 7, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#27353b"; rr(-9, -5, 18, 21, 6); ctx.fill();
-        ctx.fillStyle = "#e3a56e"; ctx.beginPath(); ctx.arc(0, -10, 7, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#f3c14c"; ctx.fillRect(-8, -4, 16, 5); ctx.restore();
-        const nearest = g.cars.find((car) => distance(g.player.x, g.player.y, car.x, car.y) < 82);
-        if (nearest) { ctx.strokeStyle = "rgba(255,220,104,.9)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(nearest.x, nearest.y, 34, 0, Math.PI * 2); ctx.stroke(); }
-      }
-      ctx.restore();
-
-      if (g.night) {
-        ctx.fillStyle = "rgba(15,25,50,.48)"; ctx.fillRect(0, 0, width, height);
-        const glow = ctx.createRadialGradient(width / 2, height / 2, 30, width / 2, height / 2, Math.max(width, height) * .58);
-        glow.addColorStop(0, "rgba(255,221,140,.10)"); glow.addColorStop(1, "rgba(4,8,22,.28)");
-        ctx.fillStyle = glow; ctx.fillRect(0, 0, width, height);
-      }
-
-      // Minimap.
-      const mw = 142, mh = 105, mx = width - mw - 18, my = 18;
-      ctx.fillStyle = "rgba(14,20,22,.78)"; rr(mx - 5, my - 5, mw + 10, mh + 10, 12); ctx.fill();
-      ctx.save(); ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip();
-      ctx.fillStyle = "#a89b72"; ctx.fillRect(mx, my, mw, mh);
-      ctx.fillStyle = "#317889";
-      ctx.fillRect(mx + (950 / WORLD_W) * mw, my + (382 / WORLD_H) * mh, (520 / WORLD_W) * mw, (195 / WORLD_H) * mh);
-      ctx.fillRect(mx, my + (805 / WORLD_H) * mh, (475 / WORLD_W) * mw, (340 / WORLD_H) * mh);
-      ctx.fillStyle = "#d8c28e";
-      ctx.fillRect(mx + (475 / WORLD_W) * mw, my + (805 / WORLD_H) * mh, (455 / WORLD_W) * mw, (340 / WORLD_H) * mh);
-      ctx.fillStyle = "#50595a";
-      ROAD_X.forEach((x) => ctx.fillRect(mx + (x / WORLD_W) * mw - 3, my, 6, mh));
-      ROAD_Y.forEach((y) => ctx.fillRect(mx, my + (y / WORLD_H) * mh - 3, mw, 6));
-      ctx.fillStyle = "#6b8e55"; ctx.fillRect(mx + 60, my + 46, 23, 15);
-      if (g.mission !== "done") {
-        const t = g.mission === "pickup" ? { x: 1255, y: 900 } : { x: 2140, y: 1540 };
-        ctx.fillStyle = "#ffcd43"; ctx.beginPath(); ctx.arc(mx + t.x / WORLD_W * mw, my + t.y / WORLD_H * mh, 3.5, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(mx + subject.x / WORLD_W * mw, my + subject.y / WORLD_H * mh, 3.5, 0, Math.PI * 2); ctx.fill();
-      ctx.restore(); ctx.fillStyle = "rgba(255,255,255,.8)"; ctx.font = "bold 8px Arial"; ctx.fillText("MAPA DA CIDADE", mx + 7, my + mh - 5);
-    };
-
-    const tick = (timestamp: number) => {
-      const g = gameRef.current;
-      const dt = Math.min((timestamp - (previous || timestamp)) / 1000, .04);
-      previous = timestamp;
-      if (!paused) {
-        g.time += dt;
-        const keys = g.keys;
-        const forward = keys.has("w") || keys.has("arrowup");
-        const backward = keys.has("s") || keys.has("arrowdown");
-        const left = keys.has("a") || keys.has("arrowleft");
-        const right = keys.has("d") || keys.has("arrowright");
-        if (g.currentCar >= 0) {
-          const car = g.cars[g.currentCar], throttle = (forward ? 1 : 0) - (backward ? .65 : 0);
-          if (throttle) {
-            const nx = clamp(car.x + Math.cos(car.angle) * throttle * 220 * dt, 35, WORLD_W - 35);
-            const ny = clamp(car.y + Math.sin(car.angle) * throttle * 220 * dt, 35, WORLD_H - 35);
-            const water = (nx > 950 && nx < 1470 && ny > 382 && ny < 577 && !(nx > 1152 && nx < 1258)) || (nx < 455 && ny > 805 && ny < 1145);
-            const obstacle = houses.some((h) => nx > h.x - 18 && nx < h.x + h.w + 18 && ny > h.y - 18 && ny < h.y + h.h + 18) ||
-              skyline.some((b) => nx > b.x - 18 && nx < b.x + b.w + 18 && ny > b.y - 18 && ny < b.y + b.h + 18);
-            if (!water && !obstacle) { car.x = nx; car.y = ny; }
-          }
-          if (left) car.angle -= 2.35 * dt * (throttle >= 0 ? 1 : -1);
-          if (right) car.angle += 2.35 * dt * (throttle >= 0 ? 1 : -1);
-        } else {
-          let dx = (right ? 1 : 0) - (left ? 1 : 0), dy = (backward ? 1 : 0) - (forward ? 1 : 0);
-          if (dx || dy) {
-            const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
-            const speed = keys.has("shift") ? 205 : 142;
-            const nx = clamp(g.player.x + dx * speed * dt, 25, WORLD_W - 25);
-            const ny = clamp(g.player.y + dy * speed * dt, 25, WORLD_H - 25);
-            const water = (nx > 950 && nx < 1470 && ny > 382 && ny < 577 && !(nx > 1152 && nx < 1258)) || (nx < 455 && ny > 805 && ny < 1145);
-            const blocked = water || houses.some((h) => nx > h.x - 12 && nx < h.x + h.w + 12 && ny > h.y - 12 && ny < h.y + h.h + 12) || skyline.some((b) => nx > b.x - 12 && nx < b.x + b.w + 12 && ny > b.y - 12 && ny < b.y + b.h + 12);
-            if (!blocked) { g.player.x = nx; g.player.y = ny; }
-            g.player.angle = Math.atan2(dy, dx);
-          }
-        }
-        g.walkers.forEach((walker, i) => {
-          walker.phase += dt * .55; walker.x += Math.cos(walker.phase + i) * walker.speed * dt;
-          walker.y += Math.sin(walker.phase * .8 + i) * walker.speed * dt;
-          walker.x = clamp(walker.x, 35, WORLD_W - 35); walker.y = clamp(walker.y, 35, WORLD_H - 35);
-        });
-        const actor = g.currentCar >= 0 ? g.cars[g.currentCar] : g.player;
-        g.cash = g.cash.filter((coin) => {
-          if (distance(actor.x, actor.y, coin.x, coin.y) < 34) {
-            g.player.money += coin.value; setMoney(g.player.money);
-            g.message = "+" + coin.value.toLocaleString("pt-PT") + " Kz encontrados!"; g.messageUntil = g.time + 2.5;
-            return false;
-          }
-          return true;
-        });
-      }
-      drawWorld();
-      if (g.time - g.lastHud > .16) {
-        g.lastHud = g.time;
-        const nearCar = g.currentCar < 0 && g.cars.some((car) => distance(g.player.x, g.player.y, car.x, car.y) < 82);
-        const nearMission = (g.mission === "pickup" && distance(g.player.x, g.player.y, 1255, 900) < 110) ||
-          (g.mission === "deliver" && distance(g.player.x, g.player.y, 2140, 1540) < 120);
-        setHint(g.currentCar >= 0 ? "E para sair do veículo" : nearCar ? "E para entrar no carro" : nearMission ? "E para interagir" : "WASD ou setas para andar · Shift para correr");
-        if (g.messageUntil > g.time) setMessage(g.message);
-        else if (g.mission === "pickup") setMessage("Missão: vai ao mercado buscar a encomenda.");
-        else if (g.mission === "deliver") setMessage("Missão: entrega a encomenda à Dona Zefa.");
-        else setMessage("Cidade livre: explora, conduz e descobre os bairros.");
-      }
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-
-    const keyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) event.preventDefault();
-      if (key === "e" && !event.repeat) interact();
-      if (key === "escape") setPaused((v) => !v);
-      setKey(key, true);
-    };
-    const keyUp = (event: KeyboardEvent) => setKey(event.key.toLowerCase(), false);
-    const visibility = () => { if (document.hidden) gameRef.current.keys.clear(); };
-    window.addEventListener("keydown", keyDown); window.addEventListener("keyup", keyUp);
-    document.addEventListener("visibilitychange", visibility);
-    return () => {
-      cancelAnimationFrame(frame); observer.disconnect();
-      window.removeEventListener("keydown", keyDown); window.removeEventListener("keyup", keyUp);
-      document.removeEventListener("visibilitychange", visibility);
-    };
-  }, [interact, paused, setKey]);
-
-  useEffect(() => { gameRef.current.night = night; }, [night]);
-
-  const touchButton = (label: string, key: string, extra = "") => (
-    <button type="button" className={"touch-key " + extra} aria-label={label}
-      onPointerDown={(e) => { e.preventDefault(); setKey(key, true); }}
-      onPointerUp={() => setKey(key, false)} onPointerLeave={() => setKey(key, false)}
-      onPointerCancel={() => setKey(key, false)}>{label}</button>
-  );
-
-  return (
-    <main className="game-page">
-      <div className="game-shell">
-        <header className="game-header">
-          <div className="brand-line">
-            <div className="brand-mark">VB</div>
-            <div><h1 className="game-title">Vida de Bairro</h1><p className="game-subtitle">Mundo aberto · Luanda inspirada</p></div>
-          </div>
-          <div className="header-actions">
-            <button className="game-btn" type="button" onClick={() => setNight((v) => !v)}>{night ? "☀ Dia" : "☾ Noite"}</button>
-            <button className="game-btn" type="button" onClick={() => setPaused((v) => !v)}>{paused ? "▶ Continuar" : "Ⅱ Pausar"}</button>
-            <button className="game-btn gold" type="button" onClick={toggleFullscreen}>{full ? "Sair do ecrã inteiro" : "⛶ Ecrã inteiro"}</button>
-          </div>
-        </header>
-        <section className="game-hud" aria-label="Estado do jogo">
-          <div className="hud-card"><div className="hud-label">Carteira</div><div className="hud-value">{money.toLocaleString("pt-PT")} Kz</div></div>
-          <div className="hud-card"><div className="hud-label">Estado</div><div className="hud-value">{inCar ? "Ao volante" : "A pé"}</div></div>
-          <div className="hud-card mission-card"><div className="hud-label">Missão principal</div>
-            <div className="mission-value">{mission === "pickup" ? "① Vai ao mercado buscar a encomenda" : mission === "deliver" ? "② Entrega a encomenda à Dona Zefa" : "✓ Missão concluída · +5.000 Kz"}</div>
-          </div>
-        </section>
-        <div className="game-frame" id="game-frame">
-          <canvas ref={canvasRef} className="game-canvas" aria-label="Jogo de mundo aberto Vida de Bairro" />
-          <div className="canvas-top-left"><strong>Zona de jogo · {night ? "Modo noite" : "Modo dia"}</strong><span>{hint}</span></div>
-          <div className="toast-message">{message}</div>
-          {paused && <div className="paused-overlay"><div className="paused-panel"><h2>JOGO PAUSADO</h2><p>Respira um pouco. A cidade espera por ti.</p>
-            <button className="game-btn gold continue-btn" onClick={() => setPaused(false)}>Continuar a jogar</button></div></div>}
-          <div className="touch-controls">
-            <div className="touch-cluster">
-              {touchButton("▲", "w", "up")}{touchButton("◀", "a", "left")}{touchButton("▼", "s", "down")}{touchButton("▶", "d", "right")}
-            </div>
-            <div className="touch-actions">
-              <button className="touch-key" onPointerDown={(e) => { e.preventDefault(); interact(); }}>AÇÃO</button>{touchButton("CORRER", "shift")}
-            </div>
-          </div>
-        </div>
-        <footer className="game-footer">
-          <div><span className="keycap">W</span><span className="keycap">A</span><span className="keycap">S</span><span className="keycap">D</span> mover · <span className="keycap">E</span> interagir · <span className="keycap">SHIFT</span> correr</div>
-          <div>Protótipo jogável · Explora a cidade e descobre os bairros</div>
-        </footer>
-      </div>
-    </main>
-  );
+  useEffect(()=>{const g=gameRef.current;if(!g)return;g.scene.background=new THREE.Color(night?0x111b32:0x9bb8c6);g.scene.fog.color.set(night?0x111b32:0x9bb8c6);},[night]);
+  const press=(key:string,on:boolean)=>{const g=gameRef.current;if(!g)return;if(on)g.keys.add(key);else g.keys.delete(key);};
+  const toggleFull=async()=>{const el=document.getElementById("gta-frame");try{if(!document.fullscreenElement&&el){await el.requestFullscreen();setFull(true);}else if(document.fullscreenElement){await document.exitFullscreen();setFull(false);}}catch{setMessage("Ecrã inteiro não suportado neste navegador.");}};
+  return <main className="gta-page"><div className="gta-shell">
+    <header className="gta-header"><div className="gta-brand"><div className="gta-logo">GA</div><div><div className="gta-title">GTA ANGOLA</div><div className="gta-subtitle">VIDA SEM LIMITES · LUANDA, ANGOLA</div></div></div>
+    <div className="gta-actions"><button onClick={()=>setNight(n=>!n)}>{night?"☀ DIA":"☾ NOITE"}</button><button onClick={()=>setPaused(p=>!p)}>{paused?"▶ CONTINUAR":"Ⅱ PAUSAR"}</button><button className="gta-gold" onClick={toggleFull}>{full?"SAIR DO ECRÃ INTEIRO":"⛶ ECRÃ INTEIRO"}</button></div></header>
+    <section className="gta-stats"><div><small>CARTEIRA</small><strong>{money.toLocaleString("pt-PT")} Kz</strong></div><div><small>ESTADO</small><strong>{inCar?"A CONDUZIR":"A PÉ"}</strong></div><div><small>VELOCIDADE</small><strong>{speed} km/h</strong></div><div className="gta-objective"><small>OBJECTIVO</small><strong>{mission===0?"VAI AO MERCADO RECOLHER A ENCOMENDA":mission===1?"ENTREGA A ENCOMENDA NO DESTINO":"MISSÃO CONCLUÍDA · EXPLORA A CIDADE"}</strong></div></section>
+    <section className="gta-frame" id="gta-frame"><div className="gta-world" ref={mountRef}/><div className="gta-location"><b>● AO VIVO</b><span>LUANDA · MUNDO ABERTO 3D</span></div><div className="gta-hint">{message}</div>{paused&&<div className="gta-paused"><div><h2>JOGO PAUSADO</h2><p>A cidade espera por ti.</p><button className="gta-gold" onClick={()=>setPaused(false)}>CONTINUAR</button></div></div>}
+    <div className="gta-touch"><div className="gta-dpad"><button onPointerDown={()=>press("w",true)} onPointerUp={()=>press("w",false)} onPointerLeave={()=>press("w",false)}>▲</button><button onPointerDown={()=>press("a",true)} onPointerUp={()=>press("a",false)} onPointerLeave={()=>press("a",false)}>◀</button><button onPointerDown={()=>press("s",true)} onPointerUp={()=>press("s",false)} onPointerLeave={()=>press("s",false)}>▼</button><button onPointerDown={()=>press("d",true)} onPointerUp={()=>press("d",false)} onPointerLeave={()=>press("d",false)}>▶</button></div><button className="gta-action" onPointerDown={interact}>AÇÃO · E</button></div></section>
+    <footer className="gta-footer"><span><kbd>W A S D</kbd> MOVER / CONDUZIR　 <kbd>E</kbd> INTERAGIR　 <kbd>SHIFT</kbd> CORRER</span><span>ARRASTA O RATO PARA RODAR A CÂMARA</span></footer>
+  </div></main>;
 }
