@@ -71,7 +71,7 @@ const makeWalkers = (): Walker[] => Array.from({ length: 28 }, (_, i) => ({
 function Index() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef({
-    player: { x: 455, y: 390, angle: 0, money: 0 },
+    player: { x: 1205, y: 320, angle: Math.PI / 2, money: 0 },
     cars: makeCars(), walkers: makeWalkers(), keys: new Set<string>(), currentCar: -1,
     mission: "pickup" as MissionPhase,
     cash: [{ x: 720, y: 1170, value: 500 }, { x: 1860, y: 720, value: 750 }, { x: 2240, y: 1370, value: 500 }],
