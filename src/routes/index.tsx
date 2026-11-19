@@ -383,7 +383,9 @@ function Index() {
       const mw = 142, mh = 105, mx = width - mw - 18, my = 18;
       ctx.fillStyle = "rgba(14,20,22,.78)"; rr(mx - 5, my - 5, mw + 10, mh + 10, 12); ctx.fill();
       ctx.save(); ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip();
-      ctx.fillStyle = "#a89b72"; ctx.fillRect(mx, my, mw, mh); ctx.fillStyle = "#50595a";
+      ctx.fillStyle = "#a89b72"; ctx.fillRect(mx, my, mw, mh);
+      ctx.fillStyle = "#317889"; ctx.fillRect(mx + (950 / WORLD_W) * mw, my + (382 / WORLD_H) * mh, (520 / WORLD_W) * mw, (195 / WORLD_H) * mh);
+      ctx.fillStyle = "#50595a";
       ROAD_X.forEach((x) => ctx.fillRect(mx + (x / WORLD_W) * mw - 3, my, 6, mh));
       ROAD_Y.forEach((y) => ctx.fillRect(mx, my + (y / WORLD_H) * mh - 3, mw, 6));
       ctx.fillStyle = "#6b8e55"; ctx.fillRect(mx + 60, my + 46, 23, 15);
@@ -408,10 +410,16 @@ function Index() {
         const right = keys.has("d") || keys.has("arrowright");
         if (g.currentCar >= 0) {
           const car = g.cars[g.currentCar], throttle = (forward ? 1 : 0) - (backward ? .65 : 0);
-          if (throttle) { car.x += Math.cos(car.angle) * throttle * 220 * dt; car.y += Math.sin(car.angle) * throttle * 220 * dt; }
+          if (throttle) {
+            const nx = clamp(car.x + Math.cos(car.angle) * throttle * 220 * dt, 35, WORLD_W - 35);
+            const ny = clamp(car.y + Math.sin(car.angle) * throttle * 220 * dt, 35, WORLD_H - 35);
+            const water = nx > 950 && nx < 1470 && ny > 382 && ny < 577 && !(nx > 1152 && nx < 1258);
+            const obstacle = houses.some((h) => nx > h.x - 18 && nx < h.x + h.w + 18 && ny > h.y - 18 && ny < h.y + h.h + 18) ||
+              skyline.some((b) => nx > b.x - 18 && nx < b.x + b.w + 18 && ny > b.y - 18 && ny < b.y + b.h + 18);
+            if (!water && !obstacle) { car.x = nx; car.y = ny; }
+          }
           if (left) car.angle -= 2.35 * dt * (throttle >= 0 ? 1 : -1);
           if (right) car.angle += 2.35 * dt * (throttle >= 0 ? 1 : -1);
-          car.x = clamp(car.x, 35, WORLD_W - 35); car.y = clamp(car.y, 35, WORLD_H - 35);
         } else {
           let dx = (right ? 1 : 0) - (left ? 1 : 0), dy = (backward ? 1 : 0) - (forward ? 1 : 0);
           if (dx || dy) {
@@ -419,7 +427,8 @@ function Index() {
             const speed = keys.has("shift") ? 205 : 142;
             const nx = clamp(g.player.x + dx * speed * dt, 25, WORLD_W - 25);
             const ny = clamp(g.player.y + dy * speed * dt, 25, WORLD_H - 25);
-            const blocked = houses.some((h) => nx > h.x - 12 && nx < h.x + h.w + 12 && ny > h.y - 12 && ny < h.y + h.h + 12) || skyline.some((b) => nx > b.x - 12 && nx < b.x + b.w + 12 && ny > b.y - 12 && ny < b.y + b.h + 12);
+            const water = nx > 950 && nx < 1470 && ny > 382 && ny < 577 && !(nx > 1152 && nx < 1258);
+            const blocked = water || houses.some((h) => nx > h.x - 12 && nx < h.x + h.w + 12 && ny > h.y - 12 && ny < h.y + h.h + 12) || skyline.some((b) => nx > b.x - 12 && nx < b.x + b.w + 12 && ny > b.y - 12 && ny < b.y + b.h + 12);
             if (!blocked) { g.player.x = nx; g.player.y = ny; }
             g.player.angle = Math.atan2(dy, dx);
           }
